@@ -1,0 +1,222 @@
+Scratch.extensions.register(new GroqAI());class GroqAI {
+  constructor() {
+    this.apiKey = "";
+    this.personality = "You are a helpful AI assistant.";
+
+    this.history = [
+      {
+        role: "system",
+        content: this.personality
+      }
+    ];
+
+    this.thinking = false;
+  }
+
+  getInfo() {
+    return {
+      id: "groqai",
+      name: "Groq AI",
+
+      blocks: [
+        {
+          opcode: "setApiKey",
+          blockType: Scratch.BlockType.COMMAND,
+          text: "set API key [KEY]",
+          arguments: {
+            KEY: {
+              type: Scratch.ArgumentType.STRING,
+              defaultValue: ""
+            }
+          }
+        },
+
+        {
+          opcode: "setPersonality",
+          blockType: Scratch.BlockType.COMMAND,
+          text: "set AI personality [TEXT]",
+          arguments: {
+            TEXT: {
+              type: Scratch.ArgumentType.STRING,
+              defaultValue: "You are a helpful AI assistant."
+            }
+          }
+        },
+
+        {
+          opcode: "askAI",
+          blockType: Scratch.BlockType.REPORTER,
+          text: "ask AI [TEXT]",
+          arguments: {
+            TEXT: {
+              type: Scratch.ArgumentType.STRING,
+              defaultValue: "Hello!"
+            }
+          }
+        },
+
+        {
+          opcode: "clearMemory",
+          blockType: Scratch.BlockType.COMMAND,
+          text: "clear AI memory"
+        },
+
+        {
+          opcode: "isThinking",
+          blockType: Scratch.BlockType.BOOLEAN,
+          text: "AI is thinking?"
+        },
+
+        {
+          opcode: "getMemory",
+          blockType: Scratch.BlockType.REPORTER,
+          text: "AI memory"
+        },
+
+        {
+          opcode: "getMemoryLength",
+          blockType: Scratch.BlockType.REPORTER,
+          text: "memory length"
+        },
+
+        {
+          opcode: "getMemoryItem",
+          blockType: Scratch.BlockType.REPORTER,
+          text: "memory item [INDEX]",
+          arguments: {
+            INDEX: {
+              type: Scratch.ArgumentType.NUMBER,
+              defaultValue: 1
+            }
+          }
+        }
+      ]
+    };
+  }
+
+  setApiKey(args) {
+    this.apiKey = String(args.KEY);
+  }
+
+  setPersonality(args) {
+    this.personality = String(args.TEXT);
+
+    if (this.history.length > 0) {
+      this.history[0] = {
+        role: "system",
+        content: this.personality
+      };
+    }
+  }
+
+  clearMemory() {
+    this.history = [
+      {
+        role: "system",
+        content: this.personality
+      }
+    ];
+  }
+
+  isThinking() {
+    return this.thinking;
+  }
+
+  getMemory() {
+    let memoryText = "";
+
+    for (const msg of this.history) {
+      if (msg.role === "system") {
+        memoryText += "[Personality] " + msg.content + "\n";
+      } else if (msg.role === "user") {
+        memoryText += "[You] " + msg.content + "\n";
+      } else if (msg.role === "assistant") {
+        memoryText += "[AI] " + msg.content + "\n";
+      }
+    }
+
+    return memoryText;
+  }
+
+  getMemoryLength() {
+    return this.history.length;
+  }
+
+  getMemoryItem(args) {
+    const index = Math.floor(args.INDEX) - 1;
+
+    if (index < 0 || index >= this.history.length) {
+      return "";
+    }
+
+    const msg = this.history[index];
+
+    return `[${msg.role}] ${msg.content}`;
+  }
+
+  async askAI(args) {
+    if (!this.apiKey) {
+      return "Please set an API key first.";
+    }
+
+    this.thinking = true;
+
+    const userMessage = String(args.TEXT);
+
+    this.history.push({
+      role: "user",
+      content: userMessage
+    });
+
+    try {
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${this.apiKey}`
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-oss-20b",
+            messages: this.history,
+            temperature: 0.8,
+            max_tokens: 60000
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      this.thinking = false;
+
+      if (data.error) {
+        return "Error: " + data.error.message;
+      }
+
+      const reply =
+        data.choices?.[0]?.message?.content ||
+        "No response";
+
+      this.history.push({
+        role: "assistant",
+        content: reply
+      });
+
+      if (this.history.length > 21) {
+        this.history = [
+          this.history[0],
+          ...this.history.slice(-20)
+        ];
+      }
+
+      return reply;
+
+    } catch (e) {
+      this.thinking = false;
+      return "Error: " + e.message;
+    }
+  }
+}
+
+Scratch.extensions.register(new GroqAI());
